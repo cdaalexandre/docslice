@@ -1,0 +1,103 @@
+"""Tests - text cleanup (domain layer, pure logic).
+
+Pirâmide de testes: Percival & Gregory, Cap. 5.
+'Lots of unit tests, few integration tests.'
+"""
+
+from docslice.domain.text_cleanup import normalize_text, remove_page_markers
+
+
+class TestNormalizeText:
+    """Tests for normalize_text."""
+
+    def test_empty_string(self) -> None:
+        assert normalize_text("") == ""
+
+    def test_single_paragraph(self) -> None:
+        result = normalize_text("  Hello   world  ")
+        assert result == "Hello world"
+
+    def test_preserves_paragraph_break(self) -> None:
+        raw = "First paragraph.\n\nSecond paragraph."
+        result = normalize_text(raw)
+        assert "\n\n" in result
+        assert "First paragraph." in result
+        assert "Second paragraph." in result
+
+    def test_collapses_excessive_blank_lines(self) -> None:
+        raw = "Line one.\n\n\n\n\nLine two."
+        result = normalize_text(raw)
+        assert result == "Line one.\n\nLine two."
+
+    def test_normalizes_crlf(self) -> None:
+        raw = "Line one.\r\nLine two.\r\nLine three."
+        result = normalize_text(raw)
+        assert "\r" not in result
+        assert "Line one." in result
+
+    def test_removes_form_feed(self) -> None:
+        raw = "Before\fAfter"
+        result = normalize_text(raw)
+        assert "\f" not in result
+
+    def test_strips_trailing_whitespace(self) -> None:
+        raw = "Hello   \nWorld   "
+        result = normalize_text(raw)
+        lines = result.split("\n")
+        for line in lines:
+            assert line == line.rstrip()
+
+    def test_collapses_internal_spaces(self) -> None:
+        raw = "Hello    world     test"
+        result = normalize_text(raw)
+        assert result == "Hello world test"
+
+    def test_tabs_become_spaces(self) -> None:
+        raw = "Hello\tworld"
+        result = normalize_text(raw)
+        assert "\t" not in result
+        assert result == "Hello world"
+
+    def test_real_world_pdf_noise(self) -> None:
+        raw = (
+            "Chapter 1\n\n"
+            "   This is a paragraph with   extra   spaces.  \n"
+            "\n\n\n"
+            "   Next paragraph here.  \n"
+            "\f"
+            "   Page footer noise   \n"
+        )
+        result = normalize_text(raw)
+        assert "\f" not in result
+        paragraphs = result.split("\n\n")
+        assert len(paragraphs) >= 2
+
+
+class TestRemovePageMarkers:
+    """Tests for remove_page_markers."""
+
+    def test_removes_standalone_number(self) -> None:
+        text = "Some text\n  42  \nMore text"
+        result = remove_page_markers(text)
+        assert "42" not in result
+        assert "Some text" in result
+
+    def test_removes_dashed_number(self) -> None:
+        text = "Text\n- 42 -\nMore"
+        result = remove_page_markers(text)
+        assert "42" not in result
+
+    def test_removes_page_prefix(self) -> None:
+        text = "Text\nPage 42\nMore"
+        result = remove_page_markers(text)
+        assert "Page 42" not in result
+
+    def test_preserves_numbers_in_sentences(self) -> None:
+        text = "There are 42 items in this list."
+        result = remove_page_markers(text)
+        assert "42" in result
+
+    def test_preserves_normal_content(self) -> None:
+        text = "Normal text without page numbers."
+        result = remove_page_markers(text)
+        assert result == text
