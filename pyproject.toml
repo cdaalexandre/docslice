@@ -63,5 +63,5 @@ show_missing = true
 skip_empty = true
 
 [[tool.mypy.overrides]]
-module = ["fitz", "ebooklib", "ebooklib.epub", "bs4"]
+module = ["fitz", "ebooklib", "bs4"]
 ignore_missing_imports = true

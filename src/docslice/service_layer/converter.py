@@ -9,6 +9,7 @@ are passed in, making the service layer testable with Fakes.
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -51,8 +52,6 @@ def _resolve_extractor(suffix: str) -> TextExtractor:
         raise ValueError(msg)
 
     module_path, func_name = _EXTRACTORS[dotted].rsplit(":", 1)
-    import importlib
-
     module = importlib.import_module(module_path)
     return getattr(module, func_name)  # type: ignore[no-any-return]
 

@@ -4,6 +4,8 @@ Pirâmide de testes: Percival & Gregory, Cap. 5.
 'Lots of unit tests, few integration tests.'
 """
 
+from __future__ import annotations
+
 from docslice.domain.text_cleanup import normalize_text, remove_page_markers
 
 

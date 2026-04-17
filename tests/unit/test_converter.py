@@ -9,9 +9,16 @@ Percival & Gregory, Cap. 13:
 inversion principle.'
 """
 
-from pathlib import Path
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
 
 from docslice.service_layer.converter import ConvertResult, convert
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class FakeExtractor:
@@ -84,7 +91,6 @@ class TestConvert:
         input_file = tmp_path / "file.docx"
         input_file.write_bytes(b"fake")
         output_dir = tmp_path / "output"
-        import pytest
 
         with pytest.raises(ValueError, match="Unsupported format"):
             convert(input_file, output_dir)

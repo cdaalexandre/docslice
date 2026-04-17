@@ -40,3 +40,5 @@ Thumbs.db
 _bootstrap*.py
 _fix*.py
 _create*.py
+_dump*.py
+_review_dump.txt
