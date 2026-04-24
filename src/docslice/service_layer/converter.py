@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_BYTES = 3 * 1024 * 1024  # 3 MB
+_DEFAULT_MAX_TXT_BYTES = 500 * 1024  # 500 KB
+_DEFAULT_MAX_ORIG_BYTES = 3 * 1024 * 1024  # 3 MB
 
 _EXTRACTORS: dict[str, str] = {
     ".pdf": "docslice.adapters.pdf_reader:extract_pdf",
@@ -59,7 +60,8 @@ def _resolve_extractor(suffix: str) -> TextExtractor:
 def convert(
     input_path: Path,
     output_dir: Path,
-    max_bytes: int = _DEFAULT_MAX_BYTES,
+    max_txt_bytes: int = _DEFAULT_MAX_TXT_BYTES,
+    max_orig_bytes: int = _DEFAULT_MAX_ORIG_BYTES,
     *,
     extractor: TextExtractor | None = None,
 ) -> ConvertResult:
@@ -68,7 +70,8 @@ def convert(
     Args:
         input_path: Path to PDF or EPUB file.
         output_dir: Directory for all output files.
-        max_bytes: Target chunk size in bytes (~3 MB default).
+        max_txt_bytes: Target TXT chunk size in bytes (~500 KB default).
+        max_orig_bytes: Target original binary chunk size in bytes (~3 MB default).
         extractor: Optional injected extractor (for testing with Fakes).
 
     Returns:
@@ -90,16 +93,16 @@ def convert(
     txt_path = _Path(output_dir) / f"{_Path(input_path).stem}.txt"
     write_text(clean_text, txt_path)
 
-    split_points = compute_split_points(clean_text, max_bytes)
+    split_points = compute_split_points(clean_text, max_txt_bytes)
     txt_parts: list[_Path] = []
     if split_points:
         txt_parts_dir = _Path(output_dir) / "txt_parts"
         txt_parts = split_text_file(txt_path, split_points, txt_parts_dir)
 
     original_parts: list[_Path] = []
-    if _Path(input_path).stat().st_size > max_bytes:
+    if _Path(input_path).stat().st_size > max_orig_bytes:
         orig_parts_dir = _Path(output_dir) / "original_parts"
-        original_parts = split_binary_file(input_path, max_bytes, orig_parts_dir)
+        original_parts = split_binary_file(input_path, max_orig_bytes, orig_parts_dir)
 
     logger.info(
         "Conversion complete: %d txt parts, %d original parts",

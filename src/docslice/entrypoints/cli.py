@@ -20,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
         prog="docslice",
-        description="Extract text from PDF/EPUB and slice into ~3 MB chunks.",
+        description="Extract PDF/EPUB to TXT; slice text in ~500 KB and original in ~3 MB chunks.",
     )
     parser.add_argument(
         "input",
@@ -35,10 +35,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output directory (default: <input_stem>_output/).",
     )
     parser.add_argument(
-        "--max-mb",
+        "--max-txt-kb",
+        type=float,
+        default=500.0,
+        help="Target TXT chunk size in KB (default: 500).",
+    )
+    parser.add_argument(
+        "--max-orig-mb",
         type=float,
         default=3.0,
-        help="Target chunk size in MB (default: 3.0).",
+        help="Target original binary chunk size in MB (default: 3.0).",
     )
     parser.add_argument(
         "-v",
@@ -73,10 +79,11 @@ def main() -> None:
         else input_path.parent / f"{input_path.stem}_output"
     )
 
-    max_bytes = int(args.max_mb * 1024 * 1024)
+    max_txt_bytes = int(args.max_txt_kb * 1024)
+    max_orig_bytes = int(args.max_orig_mb * 1024 * 1024)
 
     try:
-        result = convert(input_path, output_dir, max_bytes)
+        result = convert(input_path, output_dir, max_txt_bytes, max_orig_bytes)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         logger.error("Conversion failed: %s", exc)
         sys.exit(1)

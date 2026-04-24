@@ -19,11 +19,14 @@ pip install -e ".[dev]"
 ## Usage
 
 ```bash
-# Basic usage
+# Basic usage (TXT em 500 KB, original em 3 MB)
 docslice input.pdf
 
-# Custom output directory and chunk size
-docslice input.epub -o output/ --max-mb 5.0
+# Custom output directory
+docslice input.epub -o output/
+
+# Chunks de TXT maiores (1 MB) e original em 10 MB
+docslice large_book.pdf --max-txt-kb 1000 --max-orig-mb 10
 
 # Verbose output
 docslice large_book.pdf -v

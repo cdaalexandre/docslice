@@ -71,7 +71,13 @@ class TestConvert:
         output_dir = tmp_path / "output"
         extractor = FakeExtractor(text="Short text.")
 
-        result = convert(input_file, output_dir, max_bytes=1_000_000, extractor=extractor)
+        result = convert(
+            input_file,
+            output_dir,
+            max_txt_bytes=1_000_000,
+            max_orig_bytes=1_000_000,
+            extractor=extractor,
+        )
 
         assert result.txt_parts == []
         assert result.original_parts == []
@@ -83,7 +89,13 @@ class TestConvert:
         large_text = ("Content here. " * 50 + "\n\n") * 20
         extractor = FakeExtractor(text=large_text)
 
-        result = convert(input_file, output_dir, max_bytes=500, extractor=extractor)
+        result = convert(
+            input_file,
+            output_dir,
+            max_txt_bytes=500,
+            max_orig_bytes=500,
+            extractor=extractor,
+        )
 
         assert len(result.txt_parts) >= 2
 
