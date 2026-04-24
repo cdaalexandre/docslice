@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_DEFAULT_MAX_TXT_BYTES = 500 * 1024  # 500 KB
+_DEFAULT_MAX_TXT_BYTES = 300 * 1024  # 300 KB
 _DEFAULT_MAX_ORIG_BYTES = 3 * 1024 * 1024  # 3 MB
 
 _EXTRACTORS: dict[str, str] = {
@@ -70,7 +70,7 @@ def convert(
     Args:
         input_path: Path to PDF or EPUB file.
         output_dir: Directory for all output files.
-        max_txt_bytes: Target TXT chunk size in bytes (~500 KB default).
+        max_txt_bytes: Target TXT chunk size in bytes (~300 KB default).
         max_orig_bytes: Target original binary chunk size in bytes (~3 MB default).
         extractor: Optional injected extractor (for testing with Fakes).
 

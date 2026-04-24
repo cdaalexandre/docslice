@@ -19,7 +19,7 @@ pip install -e ".[dev]"
 ## Usage
 
 ```bash
-# Basic usage (TXT em 500 KB, original em 3 MB)
+# Basic usage (TXT em 300 KB, original em 3 MB)
 docslice input.pdf
 
 # Custom output directory

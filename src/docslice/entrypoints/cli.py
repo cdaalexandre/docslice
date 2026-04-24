@@ -20,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
         prog="docslice",
-        description="Extract PDF/EPUB to TXT; slice text in ~500 KB and original in ~3 MB chunks.",
+        description="Extract PDF/EPUB to TXT; slice text in ~300 KB and original in ~3 MB chunks.",
     )
     parser.add_argument(
         "input",
@@ -37,8 +37,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-txt-kb",
         type=float,
-        default=500.0,
-        help="Target TXT chunk size in KB (default: 500).",
+        default=300.0,
+        help="Target TXT chunk size in KB (default: 300).",
     )
     parser.add_argument(
         "--max-orig-mb",
