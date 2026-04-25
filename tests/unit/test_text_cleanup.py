@@ -7,6 +7,7 @@ Piramide de testes: Percival & Gregory, Cap. 5.
 from __future__ import annotations
 
 from docslice.domain.text_cleanup import (
+    flatten_pseudo_tables,
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
@@ -156,3 +157,48 @@ class TestRemovePictureMarkers:
         assert "Start of picture text" not in result
         assert "End of picture text" not in result
         assert "Figure caption: anatomy of the lung." in result
+
+
+class TestFlattenPseudoTables:
+    """Tests for flatten_pseudo_tables."""
+
+    def test_empty_string(self) -> None:
+        assert flatten_pseudo_tables("") == ""
+
+    def test_preserves_text_without_pipes(self) -> None:
+        text = "Plain text\n\nNo pipes here at all."
+        result = flatten_pseudo_tables(text)
+        assert result == text
+
+    def test_preserves_real_table_with_separator(self) -> None:
+        # A pipe row followed by '|---' is a real markdown table.
+        text = "|Header A<br>data line|\n|---|\n|next row|"
+        result = flatten_pseudo_tables(text)
+        assert result == text
+
+    def test_flattens_pseudo_table_without_separator(self) -> None:
+        # A pipe row NOT followed by separator is misclassified prose.
+        text = "|item one<br>item two<br>item three|\n\nFollow-up paragraph."
+        result = flatten_pseudo_tables(text)
+        assert "<br>" not in result
+        assert "item one" in result
+        assert "item three" in result
+        # First line should not start with a pipe anymore.
+        first_line = result.split("\n")[0]
+        assert not first_line.startswith("|")
+
+    def test_internal_pipes_become_newlines(self) -> None:
+        # Pseudo-table with column-separator pipes inside the row.
+        text = "|aaa<br>bbb|XXX<br>YYY|\n\nNext paragraph."
+        result = flatten_pseudo_tables(text)
+        # No pipes survive in the flattened block (before the blank line).
+        first_block = result.split("\n\n")[0]
+        assert "|" not in first_block
+        assert "aaa" in result
+        assert "XXX" in result
+
+    def test_pipe_line_without_br_is_left_alone(self) -> None:
+        # A '|' line without <br> is not a pseudo-table - leave it.
+        text = "|just a pipe line|\n\nNormal text after."
+        result = flatten_pseudo_tables(text)
+        assert result == text

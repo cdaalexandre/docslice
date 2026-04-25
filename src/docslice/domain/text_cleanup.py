@@ -3,9 +3,10 @@
 Fundamentacao: Ramalho, Fluent Python, Cap. 4.
 'Unicode Text Versus Bytes.'
 
-Preserves: paragraphs, titles, chapter breaks.
+Preserves: paragraphs, titles, chapter breaks, real markdown tables.
 Removes: repeated whitespace, page headers/footers, form-feed noise,
-pymupdf4llm picture markers.
+pymupdf4llm picture markers, pymupdf-layout pseudo-tables (rows
+classified as a table with no real header separator).
 
 Logica pura. Nao conhece APIs, nao faz I/O.
 """
@@ -90,3 +91,49 @@ def remove_picture_markers(text: str) -> str:
     text = re.sub(r"\*\*-{3,}\s*Start of picture text\s*-{3,}\*\*", "", text)
     text = re.sub(r"\*\*-{3,}\s*End of picture text\s*-{3,}\*\*", "", text)
     return text
+
+
+def flatten_pseudo_tables(text: str) -> str:
+    """Convert misclassified pseudo-tables back into prose.
+
+    pymupdf-layout sometimes wraps prose - definitions, vertical lists,
+    multi-row labels - inside a fake markdown table row using <br> tags
+    instead of real cells. The signal that it is fake (not a real
+    table) is the absence of a '|---|' separator on the next line.
+
+    For each line that starts with '|' AND contains '<br>' AND is NOT
+    followed by '|---', this function:
+      - strips the outer pipes
+      - replaces <br> with newline
+      - replaces inner pipes (column separators) with newline
+
+    Real markdown tables (with separator) are left intact - the LLM
+    downstream handles their <br>-collapsed cells fine, and rewriting
+    them risks losing structure.
+
+    Args:
+        text: Markdown text potentially containing pseudo-tables.
+
+    Returns:
+        Text with pseudo-tables flattened to prose; real tables intact.
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+    n = len(lines)
+
+    for i in range(n):
+        line = lines[i]
+        next_line = lines[i + 1] if i + 1 < n else ""
+
+        if line.startswith("|") and "<br>" in line and not next_line.startswith("|---"):
+            cleaned = line.strip().lstrip("|").rstrip("|").strip()
+            cleaned = cleaned.replace("<br>", "\n")
+            cleaned = cleaned.replace("|", "\n")
+            result.append(cleaned)
+        else:
+            result.append(line)
+
+    out = "\n".join(result)
+    # Collapse any 3+ consecutive newlines that may result from the
+    # multi-line replacement meeting an existing blank line.
+    return re.sub(r"\n{3,}", "\n\n", out)

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from docslice.adapters.file_io import split_binary_file, split_text_file, write_text
 from docslice.domain.splitter import compute_split_points
 from docslice.domain.text_cleanup import (
+    flatten_pseudo_tables,
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
@@ -94,6 +95,7 @@ def convert(
     clean_text = normalize_text(raw_text)
     clean_text = remove_page_markers(clean_text)
     clean_text = remove_picture_markers(clean_text)
+    clean_text = flatten_pseudo_tables(clean_text)
 
     txt_path = _Path(output_dir) / f"{_Path(input_path).stem}.txt"
     write_text(clean_text, txt_path)
