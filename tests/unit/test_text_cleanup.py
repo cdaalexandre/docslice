@@ -1,12 +1,16 @@
 """Tests - text cleanup (domain layer, pure logic).
 
-Pirâmide de testes: Percival & Gregory, Cap. 5.
+Piramide de testes: Percival & Gregory, Cap. 5.
 'Lots of unit tests, few integration tests.'
 """
 
 from __future__ import annotations
 
-from docslice.domain.text_cleanup import normalize_text, remove_page_markers
+from docslice.domain.text_cleanup import (
+    normalize_text,
+    remove_page_markers,
+    remove_picture_markers,
+)
 
 
 class TestNormalizeText:
@@ -103,3 +107,52 @@ class TestRemovePageMarkers:
         text = "Normal text without page numbers."
         result = remove_page_markers(text)
         assert result == text
+
+
+class TestRemovePictureMarkers:
+    """Tests for remove_picture_markers."""
+
+    def test_empty_string(self) -> None:
+        assert remove_picture_markers("") == ""
+
+    def test_preserves_text_with_no_markers(self) -> None:
+        text = "Plain markdown text with no picture markers at all."
+        result = remove_picture_markers(text)
+        assert result == text
+
+    def test_removes_basic_omitted_marker(self) -> None:
+        text = "Before\n**==> picture [223 x 3] intentionally omitted <==**\nAfter"
+        result = remove_picture_markers(text)
+        assert "==> picture" not in result
+        assert "Before" in result
+        assert "After" in result
+
+    def test_removes_marker_inside_table_with_br(self) -> None:
+        # Markers can appear embedded inside markdown tables that
+        # use <br> separators - regex matches inline (not anchored).
+        text = "|cell content<br>**==> picture [6 x 10] intentionally omitted <==**<br>more|"
+        result = remove_picture_markers(text)
+        assert "==> picture" not in result
+        assert "cell content" in result
+        assert "more" in result
+
+    def test_handles_multiple_dimensions(self) -> None:
+        # Various WxH values from real Bates output.
+        text = (
+            "**==> picture [424 x 514] intentionally omitted <==**\n"
+            "**==> picture [6 x 10] intentionally omitted <==**\n"
+            "**==> picture [1 x 1] intentionally omitted <==**\n"
+        )
+        result = remove_picture_markers(text)
+        assert "==> picture" not in result
+
+    def test_removes_start_end_wrappers_keeps_inner_text(self) -> None:
+        text = (
+            "**----- Start of picture text -----**<br>\n"
+            "Figure caption: anatomy of the lung.<br>\n"
+            "**----- End of picture text -----**<br>"
+        )
+        result = remove_picture_markers(text)
+        assert "Start of picture text" not in result
+        assert "End of picture text" not in result
+        assert "Figure caption: anatomy of the lung." in result
