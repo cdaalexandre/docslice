@@ -4,7 +4,8 @@ Fundamentacao: Ramalho, Fluent Python, Cap. 4.
 'Unicode Text Versus Bytes.'
 
 Preserves: paragraphs, titles, chapter breaks.
-Removes: repeated whitespace, page headers/footers, form-feed noise.
+Removes: repeated whitespace, page headers/footers, form-feed noise,
+pymupdf4llm picture markers.
 
 Logica pura. Nao conhece APIs, nao faz I/O.
 """
@@ -53,4 +54,39 @@ def remove_page_markers(text: str) -> str:
     """
     text = re.sub(r"^\s*-?\s*\d{1,5}\s*-?\s*$", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\s*[Pp]age\s+\d+\s*$", "", text, flags=re.MULTILINE)
+    return text
+
+
+def remove_picture_markers(text: str) -> str:
+    """Remove pymupdf4llm picture markers from extracted text.
+
+    pymupdf4llm injects two kinds of markers when its layout module
+    classifies a region as a picture:
+
+      - "**==> picture [WxH] intentionally omitted <==**"
+      - "**----- Start of picture text -----**" / "End of picture text"
+
+    The Start/End wrappers are removed but text between them is kept -
+    it may contain figure captions or text extracted from inside the
+    image. Pure noise inside (e.g. "$$" from cover scans) survives but
+    will typically be ignored as a low-signal chunk downstream.
+
+    Args:
+        text: Text potentially containing pymupdf4llm picture markers.
+
+    Returns:
+        Text with picture markers removed.
+    """
+    # "**==> picture [WxH] intentionally omitted <==**" - removed entirely.
+    # The pattern matches inline (not anchored) so it also strips markers
+    # embedded inside markdown tables that use <br> separators.
+    text = re.sub(
+        r"\*\*==>\s*picture\s+\[\d+\s*x\s*\d+\]\s+intentionally\s+omitted\s*<==\*\*",
+        "",
+        text,
+    )
+    # Wrapper markers around extracted image-text - drop the wrappers,
+    # keep whatever is between them.
+    text = re.sub(r"\*\*-{3,}\s*Start of picture text\s*-{3,}\*\*", "", text)
+    text = re.sub(r"\*\*-{3,}\s*End of picture text\s*-{3,}\*\*", "", text)
     return text

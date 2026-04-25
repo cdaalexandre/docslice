@@ -15,6 +15,7 @@ dependencies = [
     "PyMuPDF>=1.24",
     "ebooklib>=0.18",
     "beautifulsoup4>=4.12",
+    "pymupdf4llm>=0.0.17",
 ]
 
 [project.optional-dependencies]
@@ -63,5 +64,5 @@ show_missing = true
 skip_empty = true
 
 [[tool.mypy.overrides]]
-module = ["fitz", "ebooklib", "bs4"]
+module = ["fitz", "ebooklib", "bs4", "pymupdf4llm"]
 ignore_missing_imports = true
