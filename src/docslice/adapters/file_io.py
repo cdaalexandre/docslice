@@ -21,7 +21,18 @@ _DEFAULT_MAX_BYTES = 3 * 1024 * 1024  # 3 MB
 
 
 def write_text(text: str, output_path: Path) -> Path:
-    """Write text to a file with UTF-8 encoding.
+    """Write text to a file with UTF-8 encoding and LF line endings.
+
+    Uses write_bytes (not write_text) to bypass Path.write_text's
+    default newline translation. On Windows that translation emits
+    CRLF, which breaks the split pipeline invariant:
+
+      - compute_split_points operates on text.encode("utf-8") in
+        memory (LF only).
+      - split_text_file operates on path.read_bytes() from disk.
+
+    Both must see the SAME byte sequence; otherwise the last chunk
+    on disk inherits the extra CRLF bytes and can exceed max_bytes.
 
     Args:
         text: Content to write.
@@ -31,7 +42,7 @@ def write_text(text: str, output_path: Path) -> Path:
         The path written to.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(text, encoding="utf-8")
+    output_path.write_bytes(text.encode("utf-8"))
     logger.info("Wrote %d bytes to %s", output_path.stat().st_size, output_path)
     return output_path
 
