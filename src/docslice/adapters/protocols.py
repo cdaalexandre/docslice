@@ -38,3 +38,21 @@ class FileSplitter(Protocol):
     def __call__(self, path: Path, max_bytes: int) -> list[Path]:
         """Split a file into parts of at most max_bytes."""
         ...
+
+
+class GDocsWriter(Protocol):
+    """Interface for uploading a TXT file as a Google Doc.
+
+    Implementations convert plain text into a native Google Doc
+    via the Drive API (mimeType=application/vnd.google-apps.document)
+    and return the resulting document URL.
+    """
+
+    def __call__(
+        self,
+        txt_path: Path,
+        display_name: str,
+        folder_id: str | None,
+    ) -> str:
+        """Upload txt_path as a Google Doc and return its URL."""
+        ...
