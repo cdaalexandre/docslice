@@ -1,9 +1,9 @@
 # docslice
 
-Extract text from PDF and EPUB files, slice it into LLM-ready chunks,
-and (optionally) upload those chunks to Google Drive as native Google
-Docs to use as knowledge sources for NotebookLM, Gemini, or Drive
-search.
+Extract text from PDF and EPUB files into clean TXT and Word-compatible
+.docx, then slice both into LLM-ready chunks. Drop the .docx files into
+Google Drive and they auto-convert to native Google Docs - perfect as
+knowledge sources for NotebookLM, Gemini, or Drive search.
 
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
@@ -14,15 +14,17 @@ search.
 
 ## Features
 
-- **PDF and EPUB ingestion** — handles documents up to ~30,000 pages.
-- **Structural text preservation** — paragraphs, titles, chapter
+- **PDF and EPUB ingestion** - handles documents up to ~30,000 pages.
+- **Structural text preservation** - paragraphs, titles, chapter
   breaks, and real markdown tables survive extraction.
-- **Smart chunking** — splits TXT at paragraph boundaries (default
+- **Smart chunking** - splits TXT at paragraph boundaries (default
   ~300 KB), and the original binary at any boundary (default ~3 MB).
-- **Google Docs export** *(foundation in current release;
-  CLI integration in PR-B)* — converts each chunk to a native Google
-  Doc via Drive API, ready for NotebookLM and similar tools.
-- **Strict-mode Python** — `mypy --strict`, `ruff` lint+format, full
+- **Word-compatible .docx output** - one consolidated document plus
+  one .docx per chunk, ready to drop into Drive (auto-converts to
+  native Google Docs on upload).
+- **No cloud dependencies** - everything runs locally. No OAuth, no
+  API keys, no network calls.
+- **Strict-mode Python** - `mypy --strict`, `ruff` lint+format, full
   type hints, hexagonal architecture, no `mock.patch` in tests.
 
 ---
@@ -34,18 +36,23 @@ pip install -e .
 docslice path/to/my_book.pdf
 ```
 
-This produces:
+Output directory layout:
 
 ```
 my_book_output/
-├── my_book.txt                # full normalized text
-├── txt_parts/                 # TXT split at paragraph boundaries
-│   ├── my_book_part001.txt
-│   ├── my_book_part002.txt
-│   └── ...
-└── original_parts/            # only if input > --max-orig-mb
-    ├── my_book_part001.pdf
-    └── ...
+| my_book.txt                # full normalized text
+| my_book.docx               # full text as Word doc (Drive-uploadable)
+| txt_parts/                 # TXT split at paragraph boundaries
+|   | my_book_part001.txt
+|   | my_book_part002.txt
+|   | ...
+| docx_parts/                # one .docx per TXT chunk
+|   | my_book_part001.docx
+|   | my_book_part002.docx
+|   | ...
+| original_parts/            # only if input > --max-orig-mb
+|   | my_book_part001.pdf
+|   | ...
 ```
 
 ---
@@ -110,25 +117,54 @@ docslice noisy_scan.pdf -v
 
 ---
 
+## Sending the output to Google Drive
+
+docslice produces standard Word .docx files. Google Drive recognizes
+.docx and converts them to native Google Docs on upload or
+double-click - no API or OAuth needed.
+
+Suggested workflow:
+
+1. Run `docslice my_book.pdf`.
+2. Open `my_book_output/docx_parts/` (or pick the consolidated
+   `my_book.docx` if you prefer one document).
+3. Drag the files into Drive, or use the Drive desktop client.
+4. Right-click any uploaded `.docx` -> **Open with -> Google Docs**.
+   Drive creates the Google Docs version next to the original.
+5. Reference the Google Docs as sources in NotebookLM, Gemini, or
+   Drive search.
+
+For batch conversion, select the .docx files in Drive, right-click,
+and choose **Open with -> Google Docs** on each, or upload with
+"Convert uploads" enabled in Drive settings (the Google Docs
+versions are created automatically).
+
+---
+
 ## How it works
 
 ### Pipeline
 
 ```
 PDF / EPUB
-    │
-    ▼
-extract  ──►  raw text
-    │
-    ▼
-normalize  ──►  clean text  (paragraphs, no page noise)
-    │
-    ▼
-write TXT  ──►  my_book.txt
-    │
-    ├──►  split TXT  ──►  txt_parts/  (~300 KB each)
-    │
-    └──►  split binary  ──►  original_parts/  (~3 MB each)
+    |
+    v
+extract  -->  raw text
+    |
+    v
+normalize  -->  clean text  (paragraphs, no page noise)
+    |
+    v
+write TXT  -->  my_book.txt
+    |
+    v
+write DOCX  -->  my_book.docx
+    |
+    +-->  split TXT  -->  txt_parts/  (~300 KB each)
+    |        |
+    |        +-->  one .docx per chunk  -->  docx_parts/
+    |
+    +-->  split binary  -->  original_parts/  (~3 MB each, if > 3 MB)
 ```
 
 ### Text normalization
@@ -147,52 +183,18 @@ And **removes**:
 - Pseudo-tables produced by layout misclassification (rows with no
   real header separator)
 
+### .docx generation
+
+Each blank-line-separated block in the TXT becomes one Word
+paragraph in the .docx via the `python-docx` library. No formatting
+is applied (default style only) - the goal is clean text that Drive
+will index well.
+
 ### File format
 
-- UTF-8 without BOM
+- UTF-8 without BOM (TXT)
 - LF line endings (enforced by `.gitattributes`)
-
----
-
-## Google Docs export
-
-> **Status**: foundation shipped in PR-A (adapter, protocol, OAuth
-> helper, unit tests with Fake Drive service). CLI integration —
-> `--gdocs`, `--gdocs-credentials`, `--gdocs-folder-id` flags wired
-> into the converter — lands in PR-B.
-
-docslice can upload each TXT chunk (and a consolidated full-text
-document) to Google Drive as a native Google Doc, suitable as a
-knowledge source for NotebookLM, Gemini, or Drive full-text search.
-
-### How it works
-
-- The Drive API automatically converts the uploaded TXT into a native
-  Google Doc when the metadata sets
-  `mimeType="application/vnd.google-apps.document"`.
-- One API call per file — no `documents.batchUpdate` overhead from
-  the Docs API.
-- Source size limits: ~50 MB / ~1 million characters per Google Doc.
-  Default 300 KB TXT chunks fit with wide margin.
-- OAuth scope: `drive.file` — access only to files created or opened
-  by docslice. Narrower than full Drive access.
-
-### One-time OAuth setup
-
-1. Visit the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a project (e.g. `docslice`) or pick an existing one.
-3. Go to **APIs & Services** → **Library** and enable **Google Drive
-   API**.
-4. Go to **APIs & Services** → **Credentials** → **Create credentials**
-   → **OAuth client ID**.
-5. Choose application type **Desktop app**, give it a name, and
-   download the resulting JSON.
-6. Save the file as `~/.docslice/credentials.json`. On Windows that
-   is `C:\Users\<you>\.docslice\credentials.json`.
-
-On the first upload run, a browser window opens for user consent.
-After approval, the access token is cached at `~/.docslice/token.json`
-and silently refreshed on subsequent runs.
+- Office Open XML (.docx, ZIP-based; Word 2007+ and Google Docs)
 
 ---
 
@@ -203,22 +205,21 @@ Percival & Gregory's *Architecture Patterns with Python*.
 
 ```
 src/docslice/
-├── adapters/              # I/O boundaries
-│   ├── pdf_reader.py        # PyMuPDF / pymupdf4llm
-│   ├── epub_reader.py       # ebooklib + BeautifulSoup
-│   ├── file_io.py           # write text, split binary
-│   ├── gdocs_auth.py        # Google OAuth flow
-│   ├── gdocs_writer.py      # Drive upload with auto-conversion
-│   └── protocols.py         # Protocol interfaces (TextExtractor,
-│                            #   FileSplitter, GDocsWriter)
-├── domain/                # Pure logic — no I/O, no APIs
-│   ├── splitter.py          # compute paragraph-aware split points
-│   └── text_cleanup.py      # normalize, remove noise, flatten tables
-├── service_layer/         # Pipeline orchestration
-│   └── converter.py         # extract → clean → split → write
-├── entrypoints/           # User interface
-│   └── cli.py               # argparse + setup_logging
-└── log.py                 # get_logger + setup_logging
+| adapters/              # I/O boundaries
+|   | pdf_reader.py        # PyMuPDF / pymupdf4llm
+|   | epub_reader.py       # ebooklib + BeautifulSoup
+|   | file_io.py           # write text, split binary
+|   | docx_writer.py       # TXT -> .docx via python-docx
+|   | protocols.py         # Protocol interfaces (TextExtractor,
+|                          #   FileSplitter, DocxWriter)
+| domain/                # Pure logic - no I/O, no APIs
+|   | splitter.py          # compute paragraph-aware split points
+|   | text_cleanup.py      # normalize, remove noise, flatten tables
+| service_layer/         # Pipeline orchestration
+|   | converter.py         # extract -> clean -> split -> write
+| entrypoints/           # User interface
+|   | cli.py               # argparse + setup_logging
+| log.py                 # get_logger + setup_logging
 ```
 
 ### Layer rules
@@ -226,21 +227,21 @@ src/docslice/
 - `domain/` depends on **nothing else in the project**. Pure
   functions, fully unit-tested.
 - `adapters/` isolates external libraries (PyMuPDF, ebooklib,
-  Drive API) behind explicit `Protocol` interfaces in
+  python-docx) behind explicit `Protocol` interfaces in
   `protocols.py`. Swapping a library only touches its adapter.
 - `service_layer/converter.py` orchestrates the pipeline by
   composing functions from layers below it. Adapters are **injected
   via parameters**, not imported directly inside the function, so
   the service layer is testable with Fakes.
-- `entrypoints/cli.py` is the thinnest possible layer — parses
+- `entrypoints/cli.py` is the thinnest possible layer - parses
   arguments, calls `convert()`, formats logs.
 
 ### Design references
 
-- Percival & Gregory, *Architecture Patterns with Python* —
+- Percival & Gregory, *Architecture Patterns with Python* -
   hexagonal layout (Cap. 2), service layer (Cap. 4), dependency
   inversion (Cap. 13)
-- Ramalho, *Fluent Python* — `Protocol` and structural subtyping
+- Ramalho, *Fluent Python* - `Protocol` and structural subtyping
   (Cap. 13), encoding (Cap. 4), modern type hints (Cap. 8 + 15)
 
 ### Testing pattern
@@ -259,7 +260,7 @@ class FakeExtractor:
 ```
 
 Quoting Percival & Gregory: *"every call to mock.patch is a ticking
-time bomb"* — over-mocking ties tests to implementation details and
+time bomb"* - over-mocking ties tests to implementation details and
 breaks on every refactor. Fakes satisfy the same `Protocol` and stay
 stable.
 
@@ -287,7 +288,7 @@ All settings live in `pyproject.toml` (PEP 621):
 - All source files are UTF-8 without BOM.
 - LF line endings, enforced by `.gitattributes` (`* text=auto eol=lf`).
 - Every `open()` and `write_text()` call uses `encoding="utf-8"`
-  explicitly — no implicit defaults.
+  explicitly - no implicit defaults.
 - File-writing helper scripts use `path.write_bytes(text.encode("utf-8"))`
   to bypass Windows' silent CRLF translation that
   `Path.write_text()` performs by default.
@@ -307,7 +308,7 @@ source .venv/bin/activate          # macOS/Linux
 pip install -e ".[dev]"
 ```
 
-### Phase C — quality gates
+### Phase C - quality gates
 
 Every commit must pass all four checks:
 
@@ -348,7 +349,7 @@ from __future__ import annotations
 ```
 
 Use `if TYPE_CHECKING:` for type-only imports (e.g. `pathlib.Path`
-when only used in annotations) — `ruff` rules `TC001`/`TC003` will
+when only used in annotations) - `ruff` rules `TC001`/`TC003` will
 catch missed cases.
 
 ### Logging
@@ -362,7 +363,7 @@ logger = get_logger(__name__)
 ```
 
 `setup_logging()` is called **once** in the entrypoint. Never use
-`print()` in source code — only in throwaway helper scripts.
+`print()` in source code - only in throwaway helper scripts.
 
 ---
 
@@ -371,8 +372,8 @@ logger = get_logger(__name__)
 GitHub Actions runs on every push and pull request:
 
 - **Matrix**: Python 3.11, 3.12, and 3.13 on `ubuntu-latest`
-- **Steps**: install editable → `ruff check` → `ruff format --check`
-  → `mypy src` → `pytest --cov=src --cov-report=xml`
+- **Steps**: install editable -> `ruff check` -> `ruff format --check`
+  -> `mypy src` -> `pytest --cov=src --cov-report=xml`
 - **Environment**: `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`
   (PEP 540) so encoding is consistent across platforms
 
@@ -380,31 +381,17 @@ A green CI run is required before merging to `main`.
 
 ---
 
-## Project status
-
-| Component                          | Status                                          |
-| ---------------------------------- | ----------------------------------------------- |
-| PDF and EPUB extraction            | ✅ Stable                                       |
-| Text normalization                 | ✅ Stable                                       |
-| TXT and binary splitting           | ✅ Stable                                       |
-| Google Docs adapter (foundation)   | ✅ PR-A — Protocol, uploader, OAuth, unit tests |
-| Google Docs CLI integration        | 🚧 PR-B — `--gdocs` flag, converter wiring     |
-| Coverage expansion                 | 🚧 PR-C — integration tests, edge cases        |
-
----
-
 ## Tech stack
 
-| Concern              | Library                                                                                    |
-| -------------------- | ------------------------------------------------------------------------------------------ |
+| Concern              | Library                                                                 |
+| -------------------- | ----------------------------------------------------------------------- |
 | PDF extraction       | [PyMuPDF](https://pymupdf.readthedocs.io/) + [pymupdf4llm](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/) |
 | EPUB parsing         | [ebooklib](https://github.com/aerkalov/ebooklib) + [beautifulsoup4](https://www.crummy.com/software/BeautifulSoup/) |
-| Google Drive API     | [google-api-python-client](https://github.com/googleapis/google-api-python-client)         |
-| OAuth 2.0            | [google-auth-oauthlib](https://github.com/googleapis/google-auth-library-python-oauthlib) |
-| Lint and format      | [ruff](https://docs.astral.sh/ruff/)                                                       |
-| Type checking        | [mypy](https://mypy.readthedocs.io/) (strict mode)                                         |
-| Testing              | [pytest](https://docs.pytest.org/) + [pytest-cov](https://pytest-cov.readthedocs.io/)      |
-| Build backend        | [hatchling](https://hatch.pypa.io/latest/)                                                 |
+| .docx generation     | [python-docx](https://python-docx.readthedocs.io/)                      |
+| Lint and format      | [ruff](https://docs.astral.sh/ruff/)                                    |
+| Type checking        | [mypy](https://mypy.readthedocs.io/) (strict mode)                      |
+| Testing              | [pytest](https://docs.pytest.org/) + [pytest-cov](https://pytest-cov.readthedocs.io/) |
+| Build backend        | [hatchling](https://hatch.pypa.io/latest/)                              |
 
 ---
 

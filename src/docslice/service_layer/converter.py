@@ -3,7 +3,7 @@
 Fundamentacao: Percival & Gregory, Architecture Patterns, Cap. 4.e.
 'Introducing a Service Layer - define a clear boundary for our use cases.'
 
-Dependency injection via function parameters: extractors and I/O functions
+Dependency injection via function parameters: extractors and writers
 are passed in, making the service layer testable with Fakes.
 """
 
@@ -13,6 +13,7 @@ import importlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from docslice.adapters.docx_writer import write_txt_as_docx
 from docslice.adapters.file_io import split_binary_file, split_text_file, write_text
 from docslice.domain.splitter import compute_split_points
 from docslice.domain.text_cleanup import (
@@ -26,7 +27,7 @@ from docslice.log import get_logger
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from docslice.adapters.protocols import TextExtractor
+    from docslice.adapters.protocols import DocxWriter, TextExtractor
 
 logger = get_logger(__name__)
 
@@ -45,7 +46,9 @@ class ConvertResult:
 
     input_path: Path
     txt_path: Path
+    docx_path: Path
     txt_parts: list[Path] = field(default_factory=list)
+    docx_parts: list[Path] = field(default_factory=list)
     original_parts: list[Path] = field(default_factory=list)
 
 
@@ -69,24 +72,34 @@ def convert(
     max_orig_bytes: int = _DEFAULT_MAX_ORIG_BYTES,
     *,
     extractor: TextExtractor | None = None,
+    docx_writer: DocxWriter | None = None,
 ) -> ConvertResult:
     """Full pipeline: detect format -> extract -> clean -> split -> write.
+
+    Generates, in order:
+        1. <stem>.txt (full normalized text)
+        2. <stem>.docx (full text as Word doc, Drive-uploadable)
+        3. txt_parts/<stem>_partNNN.txt (~max_txt_bytes each)
+        4. docx_parts/<stem>_partNNN.docx (one per TXT chunk)
+        5. original_parts/<stem>_partNNN.<ext> (only if input file
+           is larger than max_orig_bytes)
 
     Args:
         input_path: Path to PDF or EPUB file.
         output_dir: Directory for all output files.
         max_txt_bytes: Target TXT chunk size in bytes (~300 KB default).
-        max_orig_bytes: Target original binary chunk size in bytes (~3 MB default).
+        max_orig_bytes: Target original binary chunk size in bytes
+            (~3 MB default).
         extractor: Optional injected extractor (for testing with Fakes).
+        docx_writer: Optional injected docx writer (for testing with Fakes).
 
     Returns:
         ConvertResult with paths to all generated files.
     """
-    from pathlib import Path as _Path
-
     logger.info("Starting conversion: %s", input_path)
 
-    extract = extractor or _resolve_extractor(_Path(input_path).suffix)
+    extract = extractor or _resolve_extractor(input_path.suffix)
+    write_docx = docx_writer or write_txt_as_docx
 
     logger.info("Extracting text...")
     raw_text = extract(input_path)
@@ -97,29 +110,44 @@ def convert(
     clean_text = remove_picture_markers(clean_text)
     clean_text = flatten_pseudo_tables(clean_text)
 
-    txt_path = _Path(output_dir) / f"{_Path(input_path).stem}.txt"
+    stem = input_path.stem
+
+    txt_path = output_dir / f"{stem}.txt"
     write_text(clean_text, txt_path)
 
+    docx_path = output_dir / f"{stem}.docx"
+    write_docx(txt_path, docx_path)
+
     split_points = compute_split_points(clean_text, max_txt_bytes)
-    txt_parts: list[_Path] = []
+    txt_parts: list[Path] = []
+    docx_parts: list[Path] = []
     if split_points:
-        txt_parts_dir = _Path(output_dir) / "txt_parts"
+        txt_parts_dir = output_dir / "txt_parts"
         txt_parts = split_text_file(txt_path, split_points, txt_parts_dir)
 
-    original_parts: list[_Path] = []
-    if _Path(input_path).stat().st_size > max_orig_bytes:
-        orig_parts_dir = _Path(output_dir) / "original_parts"
+        docx_parts_dir = output_dir / "docx_parts"
+        for txt_part in txt_parts:
+            docx_part = docx_parts_dir / f"{txt_part.stem}.docx"
+            write_docx(txt_part, docx_part)
+            docx_parts.append(docx_part)
+
+    original_parts: list[Path] = []
+    if input_path.stat().st_size > max_orig_bytes:
+        orig_parts_dir = output_dir / "original_parts"
         original_parts = split_binary_file(input_path, max_orig_bytes, orig_parts_dir)
 
     logger.info(
-        "Conversion complete: %d txt parts, %d original parts",
+        "Conversion complete: %d txt parts, %d docx parts, %d original parts",
         len(txt_parts),
+        len(docx_parts),
         len(original_parts),
     )
 
     return ConvertResult(
         input_path=input_path,
         txt_path=txt_path,
+        docx_path=docx_path,
         txt_parts=txt_parts,
+        docx_parts=docx_parts,
         original_parts=original_parts,
     )

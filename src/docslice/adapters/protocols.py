@@ -40,19 +40,14 @@ class FileSplitter(Protocol):
         ...
 
 
-class GDocsWriter(Protocol):
-    """Interface for uploading a TXT file as a Google Doc.
+class DocxWriter(Protocol):
+    """Interface for converting a TXT file into a .docx document.
 
-    Implementations convert plain text into a native Google Doc
-    via the Drive API (mimeType=application/vnd.google-apps.document)
-    and return the resulting document URL.
+    Implementations preserve paragraph boundaries (blank lines) and
+    write a Word-compatible .docx that Google Drive auto-converts to
+    a native Google Doc on upload/double-click.
     """
 
-    def __call__(
-        self,
-        txt_path: Path,
-        display_name: str,
-        folder_id: str | None,
-    ) -> str:
-        """Upload txt_path as a Google Doc and return its URL."""
+    def __call__(self, txt_path: Path, docx_path: Path) -> Path:
+        """Read txt_path and write a .docx at docx_path. Returns the path."""
         ...

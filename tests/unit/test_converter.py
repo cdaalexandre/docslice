@@ -37,6 +37,19 @@ class FakeExtractor:
         return self.text
 
 
+class FakeDocxWriter:
+    """Test double that touches an empty file at docx_path."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Path, Path]] = []
+
+    def __call__(self, txt_path: Path, docx_path: Path) -> Path:
+        self.calls.append((txt_path, docx_path))
+        docx_path.parent.mkdir(parents=True, exist_ok=True)
+        docx_path.write_bytes(b"FAKE_DOCX_BYTES")
+        return docx_path
+
+
 class TestConvert:
     """Tests for the convert orchestration."""
 
@@ -45,8 +58,14 @@ class TestConvert:
         input_file.write_bytes(b"fake pdf content")
         output_dir = tmp_path / "output"
         extractor = FakeExtractor()
+        docx_writer = FakeDocxWriter()
 
-        result = convert(input_file, output_dir, extractor=extractor)
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=extractor,
+            docx_writer=docx_writer,
+        )
 
         assert isinstance(result, ConvertResult)
         assert result.txt_path.exists()
@@ -59,17 +78,43 @@ class TestConvert:
         input_file.write_bytes(b"fake epub content")
         output_dir = tmp_path / "output"
         extractor = FakeExtractor()
+        docx_writer = FakeDocxWriter()
 
-        convert(input_file, output_dir, extractor=extractor)
+        convert(
+            input_file,
+            output_dir,
+            extractor=extractor,
+            docx_writer=docx_writer,
+        )
 
         assert len(extractor.calls) == 1
         assert extractor.calls[0] == input_file
+
+    def test_produces_consolidated_docx(self, tmp_path: Path) -> None:
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        extractor = FakeExtractor()
+        docx_writer = FakeDocxWriter()
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=extractor,
+            docx_writer=docx_writer,
+        )
+
+        assert result.docx_path.exists()
+        assert result.docx_path.suffix == ".docx"
+        # First call is always the consolidated docx.
+        assert docx_writer.calls[0] == (result.txt_path, result.docx_path)
 
     def test_small_file_no_split(self, tmp_path: Path) -> None:
         input_file = tmp_path / "small.pdf"
         input_file.write_bytes(b"tiny")
         output_dir = tmp_path / "output"
         extractor = FakeExtractor(text="Short text.")
+        docx_writer = FakeDocxWriter()
 
         result = convert(
             input_file,
@@ -77,17 +122,22 @@ class TestConvert:
             max_txt_bytes=1_000_000,
             max_orig_bytes=1_000_000,
             extractor=extractor,
+            docx_writer=docx_writer,
         )
 
         assert result.txt_parts == []
+        assert result.docx_parts == []
         assert result.original_parts == []
+        # Only the consolidated docx was written.
+        assert len(docx_writer.calls) == 1
 
-    def test_large_text_splits(self, tmp_path: Path) -> None:
+    def test_large_text_splits_with_matching_docx_parts(self, tmp_path: Path) -> None:
         input_file = tmp_path / "big.pdf"
         input_file.write_bytes(b"x" * 100)
         output_dir = tmp_path / "output"
         large_text = ("Content here. " * 50 + "\n\n") * 20
         extractor = FakeExtractor(text=large_text)
+        docx_writer = FakeDocxWriter()
 
         result = convert(
             input_file,
@@ -95,9 +145,13 @@ class TestConvert:
             max_txt_bytes=500,
             max_orig_bytes=500,
             extractor=extractor,
+            docx_writer=docx_writer,
         )
 
         assert len(result.txt_parts) >= 2
+        assert len(result.docx_parts) == len(result.txt_parts)
+        # Calls = 1 consolidated + 1 per chunk.
+        assert len(docx_writer.calls) == 1 + len(result.txt_parts)
 
     def test_unsupported_format_raises(self, tmp_path: Path) -> None:
         input_file = tmp_path / "file.docx"

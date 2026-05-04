@@ -20,7 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(
         prog="docslice",
-        description="Extract PDF/EPUB to TXT; slice text in ~300 KB and original in ~3 MB chunks.",
+        description="Extract PDF/EPUB to TXT and DOCX; slice into chunks for LLM indexing.",
     )
     parser.add_argument(
         "input",
@@ -89,7 +89,10 @@ def main() -> None:
         sys.exit(1)
 
     logger.info("Full text: %s", result.txt_path)
+    logger.info("Full docx: %s", result.docx_path)
     if result.txt_parts:
         logger.info("Text parts: %d files in %s/", len(result.txt_parts), output_dir)
+    if result.docx_parts:
+        logger.info("Docx parts: %d files in %s/", len(result.docx_parts), output_dir)
     if result.original_parts:
         logger.info("Original parts: %d files", len(result.original_parts))
