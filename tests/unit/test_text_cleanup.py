@@ -11,6 +11,7 @@ from docslice.domain.text_cleanup import (
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
+    strip_control_chars,
 )
 
 
@@ -202,3 +203,70 @@ class TestFlattenPseudoTables:
         text = "|just a pipe line|\n\nNormal text after."
         result = flatten_pseudo_tables(text)
         assert result == text
+
+
+class TestStripControlChars:
+    """Tests for strip_control_chars."""
+
+    def test_empty_string(self) -> None:
+        assert strip_control_chars("") == ""
+
+    def test_preserves_text_with_no_control_chars(self) -> None:
+        text = "Plain text with punctuation, numbers 42, no control bytes."
+        result = strip_control_chars(text)
+        assert result == text
+
+    def test_strips_null_byte(self) -> None:
+        # NULL byte is the canonical lxml/python-docx killer.
+        text = "Hello\x00World"
+        result = strip_control_chars(text)
+        assert result == "HelloWorld"
+        assert "\x00" not in result
+
+    def test_strips_bell_and_vertical_tab(self) -> None:
+        # BEL (0x07) and VT (0x0B) are XML-illegal C0 control chars.
+        text = "alpha\x07beta\x0Bgamma"
+        result = strip_control_chars(text)
+        assert result == "alphabetagamma"
+
+    def test_strips_form_feed_defensive(self) -> None:
+        # In the real pipeline normalize_text converts form-feed to
+        # newline first, so this is a defensive no-op. Tested in case
+        # pipeline ordering changes upstream.
+        text = "before\x0Cafter"
+        result = strip_control_chars(text)
+        assert result == "beforeafter"
+
+    def test_strips_full_c0_range_except_tab_lf_cr(self) -> None:
+        # Sweep all 32 C0 control chars; only TAB, LF, CR survive.
+        all_c0 = "".join(chr(i) for i in range(0x20))
+        result = strip_control_chars(all_c0)
+        assert result == "\t\n\r"
+
+    def test_preserves_tab_lf_cr(self) -> None:
+        # XML 1.0 Char production explicitly allows these three.
+        text = "col1\tcol2\nline two\rline three"
+        result = strip_control_chars(text)
+        assert result == text
+
+    def test_preserves_high_ascii_and_unicode(self) -> None:
+        # Everything >= 0x20 survives - Latin-1 accents and beyond-BMP.
+        text = "ASCII printable !@#$%^&*() acentos a-e-c greek alpha-beta"
+        result = strip_control_chars(text)
+        assert result == text
+
+    def test_real_world_pymupdf_noise(self) -> None:
+        # Realistic: paragraph contaminated by stray C0 bytes from a
+        # corrupt PDF (JPX header errors leaking through pymupdf4llm).
+        raw = (
+            "Chapter 1: Introduction\x00\n\n"
+            "This is a paragraph\x07 with embedded\x0B control\x1F bytes.\n"
+            "It must remain readable\x0E after cleanup.\n"
+        )
+        result = strip_control_chars(raw)
+        # No XML-illegal control chars remain (TAB/LF/CR are fine).
+        for ch in result:
+            assert ch in "\t\n\r" or ord(ch) >= 0x20
+        assert "Chapter 1: Introduction" in result
+        assert "This is a paragraph with embedded control bytes." in result
+        assert "It must remain readable after cleanup." in result
