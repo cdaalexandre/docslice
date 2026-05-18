@@ -21,6 +21,7 @@ from docslice.domain.text_cleanup import (
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
+    strip_control_chars,
 )
 from docslice.log import get_logger
 
@@ -106,6 +107,7 @@ def convert(
 
     logger.info("Normalizing text...")
     clean_text = normalize_text(raw_text)
+    clean_text = strip_control_chars(clean_text)
     clean_text = remove_page_markers(clean_text)
     clean_text = remove_picture_markers(clean_text)
     clean_text = flatten_pseudo_tables(clean_text)

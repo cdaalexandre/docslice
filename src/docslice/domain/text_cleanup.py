@@ -42,6 +42,39 @@ def normalize_text(raw: str) -> str:
     return text.strip()
 
 
+# XML 1.0 valid control chars: TAB (0x09), LF (0x0A), CR (0x0D).
+# Everything else in the C0 control range (0x00-0x08, 0x0B, 0x0C,
+# 0x0E-0x1F) is rejected by lxml when python-docx builds the document
+# XML tree, raising "All strings must be XML compatible: Unicode or
+# ASCII, no NULL bytes or control characters". Corrupt PDFs (e.g.
+# broken JPX image streams) routinely leak these bytes into extracted
+# text via pymupdf4llm.
+_XML_ILLEGAL_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
+
+
+def strip_control_chars(text: str) -> str:
+    """Remove XML-illegal C0 control characters from text.
+
+    Preserves TAB, LF, CR. Strips everything else in the 0x00-0x1F
+    range. Required to keep downstream XML-based writers (python-docx,
+    future EPUB output) from raising "All strings must be XML
+    compatible: Unicode or ASCII, no NULL bytes or control characters".
+
+    Apply *after* `normalize_text` so the form-feed to newline
+    translation (which preserves PDF page-break semantics) runs first;
+    form-feed is also covered here as a defensive no-op in case the
+    pipeline is reordered later.
+
+    Args:
+        text: Cleaned text that may still contain stray C0 control
+            characters from corrupt source documents.
+
+    Returns:
+        Text with C0 control chars (except TAB/LF/CR) removed.
+    """
+    return _XML_ILLEGAL_RE.sub("", text)
+
+
 def remove_page_markers(text: str) -> str:
     """Remove common page number patterns from extracted text.
 
