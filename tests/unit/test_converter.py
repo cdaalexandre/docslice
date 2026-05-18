@@ -160,3 +160,32 @@ class TestConvert:
 
         with pytest.raises(ValueError, match="Unsupported format"):
             convert(input_file, output_dir)
+
+    def test_strips_control_chars_in_pipeline(self, tmp_path: Path) -> None:
+        # Wiring proof: if a corrupt extractor leaks C0 control bytes
+        # (the exact failure mode of the JPX-broken PDF that motivated
+        # commit 33b6a1d), the convert() pipeline must scrub them
+        # before writing to disk. NUL/BEL/SO/US specifically are not
+        # whitespace for the normalize_text regex - only
+        # strip_control_chars handles them - so removing the call
+        # from the pipeline would fail this test.
+        input_file = tmp_path / "corrupt.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        contaminated = "Chapter\x00 one\x07 has\x0e stray\x1f bytes."
+        extractor = FakeExtractor(text=contaminated)
+        docx_writer = FakeDocxWriter()
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=extractor,
+            docx_writer=docx_writer,
+        )
+
+        content = result.txt_path.read_text(encoding="utf-8")
+        # No XML-illegal C0 control chars survive (TAB/LF/CR are fine).
+        for ch in content:
+            assert ch in "\t\n\r" or ord(ch) >= 0x20
+        # Readable text is preserved end-to-end.
+        assert "Chapter one has stray bytes." in content

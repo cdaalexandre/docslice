@@ -225,7 +225,7 @@ class TestStripControlChars:
 
     def test_strips_bell_and_vertical_tab(self) -> None:
         # BEL (0x07) and VT (0x0B) are XML-illegal C0 control chars.
-        text = "alpha\x07beta\x0Bgamma"
+        text = "alpha\x07beta\x0bgamma"
         result = strip_control_chars(text)
         assert result == "alphabetagamma"
 
@@ -233,7 +233,7 @@ class TestStripControlChars:
         # In the real pipeline normalize_text converts form-feed to
         # newline first, so this is a defensive no-op. Tested in case
         # pipeline ordering changes upstream.
-        text = "before\x0Cafter"
+        text = "before\x0cafter"
         result = strip_control_chars(text)
         assert result == "beforeafter"
 
@@ -260,8 +260,8 @@ class TestStripControlChars:
         # corrupt PDF (JPX header errors leaking through pymupdf4llm).
         raw = (
             "Chapter 1: Introduction\x00\n\n"
-            "This is a paragraph\x07 with embedded\x0B control\x1F bytes.\n"
-            "It must remain readable\x0E after cleanup.\n"
+            "This is a paragraph\x07 with embedded\x0b control\x1f bytes.\n"
+            "It must remain readable\x0e after cleanup.\n"
         )
         result = strip_control_chars(raw)
         # No XML-illegal control chars remain (TAB/LF/CR are fine).
