@@ -51,3 +51,11 @@ class DocxWriter(Protocol):
     def __call__(self, txt_path: Path, docx_path: Path) -> Path:
         """Read txt_path and write a .docx at docx_path. Returns the path."""
         ...
+
+
+class PageRasterizer(Protocol):
+    """Interface for rendering PDF pages to image files (fitz, fake)."""
+
+    def __call__(self, path: Path, output_dir: Path, dpi: int) -> list[Path]:
+        """Render each page of the PDF to an image file in output_dir."""
+        ...
