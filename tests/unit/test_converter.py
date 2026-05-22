@@ -50,6 +50,18 @@ class FakeDocxWriter:
         return docx_path
 
 
+class FakePageRasterizer:
+    """Test double that records calls and returns canned image paths."""
+
+    def __init__(self, pages: int = 3) -> None:
+        self.pages = pages
+        self.calls: list[tuple[Path, Path, int]] = []
+
+    def __call__(self, path: Path, output_dir: Path, dpi: int) -> list[Path]:
+        self.calls.append((path, output_dir, dpi))
+        return [output_dir / f"page{n + 1:05d}.png" for n in range(self.pages)]
+
+
 class TestConvert:
     """Tests for the convert orchestration."""
 
@@ -189,3 +201,39 @@ class TestConvert:
             assert ch in "\t\n\r" or ord(ch) >= 0x20
         # Readable text is preserved end-to-end.
         assert "Chapter one has stray bytes." in content
+
+    def test_rasterize_flag_populates_page_images(self, tmp_path: Path) -> None:
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        rasterizer = FakePageRasterizer(pages=5)
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(),
+            docx_writer=FakeDocxWriter(),
+            rasterize=True,
+            rasterizer=rasterizer,
+        )
+
+        assert len(result.page_images) == 5
+        assert len(rasterizer.calls) == 1
+
+    def test_rasterize_skipped_for_non_pdf(self, tmp_path: Path) -> None:
+        input_file = tmp_path / "book.epub"
+        input_file.write_bytes(b"fake epub content")
+        output_dir = tmp_path / "output"
+        rasterizer = FakePageRasterizer()
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(),
+            docx_writer=FakeDocxWriter(),
+            rasterize=True,
+            rasterizer=rasterizer,
+        )
+
+        assert result.page_images == []
+        assert rasterizer.calls == []

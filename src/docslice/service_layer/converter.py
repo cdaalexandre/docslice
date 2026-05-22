@@ -24,16 +24,18 @@ from docslice.domain.text_cleanup import (
     strip_control_chars,
 )
 from docslice.log import get_logger
+from docslice.service_layer.rasterizer import rasterize_document
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from docslice.adapters.protocols import DocxWriter, TextExtractor
+    from docslice.adapters.protocols import DocxWriter, PageRasterizer, TextExtractor
 
 logger = get_logger(__name__)
 
 _DEFAULT_MAX_TXT_BYTES = 300 * 1024  # 300 KB
 _DEFAULT_MAX_ORIG_BYTES = 3 * 1024 * 1024  # 3 MB
+_DEFAULT_IMAGE_DPI = 200  # dots per inch for --images
 
 _EXTRACTORS: dict[str, str] = {
     ".pdf": "docslice.adapters.pdf_reader:extract_pdf",
@@ -51,6 +53,7 @@ class ConvertResult:
     txt_parts: list[Path] = field(default_factory=list)
     docx_parts: list[Path] = field(default_factory=list)
     original_parts: list[Path] = field(default_factory=list)
+    page_images: list[Path] = field(default_factory=list)
 
 
 def _resolve_extractor(suffix: str) -> TextExtractor:
@@ -72,8 +75,11 @@ def convert(
     max_txt_bytes: int = _DEFAULT_MAX_TXT_BYTES,
     max_orig_bytes: int = _DEFAULT_MAX_ORIG_BYTES,
     *,
+    rasterize: bool = False,
+    image_dpi: int = _DEFAULT_IMAGE_DPI,
     extractor: TextExtractor | None = None,
     docx_writer: DocxWriter | None = None,
+    rasterizer: PageRasterizer | None = None,
 ) -> ConvertResult:
     """Full pipeline: detect format -> extract -> clean -> split -> write.
 
@@ -84,6 +90,8 @@ def convert(
         4. docx_parts/<stem>_partNNN.docx (one per TXT chunk)
         5. original_parts/<stem>_partNNN.<ext> (only if input file
            is larger than max_orig_bytes)
+        6. page_images/<stem>_pageNNNNN.png (only if rasterize=True
+           and the input is a PDF)
 
     Args:
         input_path: Path to PDF or EPUB file.
@@ -91,8 +99,12 @@ def convert(
         max_txt_bytes: Target TXT chunk size in bytes (~300 KB default).
         max_orig_bytes: Target original binary chunk size in bytes
             (~3 MB default).
+        rasterize: If True, also render each PDF page to a PNG.
+            Ignored (with a warning) for non-PDF input.
+        image_dpi: Render resolution for the page images, in DPI.
         extractor: Optional injected extractor (for testing with Fakes).
         docx_writer: Optional injected docx writer (for testing with Fakes).
+        rasterizer: Optional injected rasterizer (for testing with Fakes).
 
     Returns:
         ConvertResult with paths to all generated files.
@@ -138,11 +150,24 @@ def convert(
         orig_parts_dir = output_dir / "original_parts"
         original_parts = split_binary_file(input_path, max_orig_bytes, orig_parts_dir)
 
+    page_images: list[Path] = []
+    if rasterize:
+        if input_path.suffix.lower() == ".pdf":
+            page_images = rasterize_document(
+                input_path,
+                output_dir,
+                image_dpi,
+                rasterizer=rasterizer,
+            )
+        else:
+            logger.warning("Skipping --images: %s is not a PDF", input_path.name)
+
     logger.info(
-        "Conversion complete: %d txt parts, %d docx parts, %d original parts",
+        "Conversion complete: %d txt parts, %d docx parts, %d original parts, %d page images",
         len(txt_parts),
         len(docx_parts),
         len(original_parts),
+        len(page_images),
     )
 
     return ConvertResult(
@@ -152,4 +177,5 @@ def convert(
         txt_parts=txt_parts,
         docx_parts=docx_parts,
         original_parts=original_parts,
+        page_images=page_images,
     )

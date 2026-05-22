@@ -12,6 +12,7 @@ from pathlib import Path
 
 from docslice.log import get_logger, setup_logging
 from docslice.service_layer.converter import convert
+from docslice.service_layer.rasterizer import rasterize_document
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=3.0,
         help="Target original binary chunk size in MB (default: 3.0).",
     )
+    image_group = parser.add_mutually_exclusive_group()
+    image_group.add_argument(
+        "--images",
+        action="store_true",
+        help="Also render each PDF page to a PNG in page_images/.",
+    )
+    image_group.add_argument(
+        "--images-only",
+        action="store_true",
+        help="Render PDF pages to PNGs and skip TXT/DOCX conversion.",
+    )
+    parser.add_argument(
+        "--image-dpi",
+        type=int,
+        default=200,
+        help="Resolution in DPI for --images / --images-only (default: 200).",
+    )
     parser.add_argument(
         "-v",
         "--verbose",
@@ -79,11 +97,27 @@ def main() -> None:
         else input_path.parent / f"{input_path.stem}_output"
     )
 
+    if args.images_only:
+        try:
+            images = rasterize_document(input_path, output_dir, args.image_dpi)
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            logger.error("Rasterization failed: %s", exc)
+            sys.exit(1)
+        logger.info("Page images: %d files in %s", len(images), output_dir / "page_images")
+        return
+
     max_txt_bytes = int(args.max_txt_kb * 1024)
     max_orig_bytes = int(args.max_orig_mb * 1024 * 1024)
 
     try:
-        result = convert(input_path, output_dir, max_txt_bytes, max_orig_bytes)
+        result = convert(
+            input_path,
+            output_dir,
+            max_txt_bytes,
+            max_orig_bytes,
+            rasterize=args.images,
+            image_dpi=args.image_dpi,
+        )
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         logger.error("Conversion failed: %s", exc)
         sys.exit(1)
@@ -96,3 +130,9 @@ def main() -> None:
         logger.info("Docx parts: %d files in %s/", len(result.docx_parts), output_dir)
     if result.original_parts:
         logger.info("Original parts: %d files", len(result.original_parts))
+    if result.page_images:
+        logger.info(
+            "Page images: %d files in %s",
+            len(result.page_images),
+            output_dir / "page_images",
+        )
