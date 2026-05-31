@@ -1,7 +1,8 @@
 # docslice
 
-Extract text from PDF and EPUB files into clean TXT and Word-compatible
-.docx, then slice both into LLM-ready chunks. Drop the .docx files into
+Extract text from PDF and EPUB files into clean TXT, structured Markdown,
+and Word-compatible .docx, then slice the TXT and the original into
+LLM-ready chunks. Drop the .docx files into
 Google Drive and they auto-convert to native Google Docs - perfect as
 knowledge sources for NotebookLM, Gemini, or Drive search.
 
@@ -17,6 +18,9 @@ knowledge sources for NotebookLM, Gemini, or Drive search.
 - **PDF and EPUB ingestion** - handles documents up to ~30,000 pages.
 - **Structural text preservation** - paragraphs, titles, chapter
   breaks, and real markdown tables survive extraction.
+- **Full Markdown output** - a complete `<stem>.md` preserves the
+  structure pymupdf4llm extracts (headings, lists, tables) with only
+  minimal cleanup, ideal as a direct LLM/RAG source.
 - **Smart chunking** - splits TXT at paragraph boundaries (default
   ~300 KB), and the original binary at any boundary (default ~3 MB).
 - **Word-compatible .docx output** - one consolidated document plus
@@ -41,6 +45,7 @@ Output directory layout:
 ```
 my_book_output/
 | my_book.txt                # full normalized text
+| my_book.md                 # full structured markdown
 | my_book.docx               # full text as Word doc (Drive-uploadable)
 | txt_parts/                 # TXT split at paragraph boundaries
 |   | my_book_part001.txt
@@ -158,6 +163,9 @@ normalize  -->  clean text  (paragraphs, no page noise)
 write TXT  -->  my_book.txt
     |
     v
+write MD  -->  my_book.md   (raw structure, minimal cleanup)
+    |
+    v
 write DOCX  -->  my_book.docx
     |
     +-->  split TXT  -->  txt_parts/  (~300 KB each)
@@ -166,6 +174,24 @@ write DOCX  -->  my_book.docx
     |
     +-->  split binary  -->  original_parts/  (~3 MB each, if > 3 MB)
 ```
+
+### Output formats
+
+docslice writes three text representations of the same document,
+each tuned for a different consumer:
+
+| File          | Cleanup applied                                  | Best for                                   |
+| ------------- | ------------------------------------------------ | ------------------------------------------ |
+| `<stem>.md`   | Minimal: LF + control-char strip + picture-marker removal | LLM / RAG ingestion where headings, lists, and tables matter |
+| `<stem>.txt`  | Full normalization: whitespace collapse, page-marker and pseudo-table removal | Plain-text search, diffing, paragraph-aware chunking |
+| `<stem>.docx` | Built from the TXT, one paragraph per block      | Google Drive upload (auto-converts to Google Docs) |
+
+The `.md` is the closest thing to what `pymupdf4llm` extracted: it
+keeps heading levels, list indentation, and real tables intact. The
+`.txt` trades that structure for flat, denoised prose. The `.docx`
+is derived from the `.txt`, so it inherits the same prose cleanup.
+Only the `.txt` and the original binary are sliced into parts; the
+`.md` is always emitted whole.
 
 ### Text normalization
 
@@ -182,6 +208,10 @@ And **removes**:
 - `pymupdf4llm` picture markers (e.g. `![image](...)`)
 - Pseudo-tables produced by layout misclassification (rows with no
   real header separator)
+
+The `.md` output skips this normalization: it keeps the structure
+pymupdf4llm produced and only strips XML-illegal control characters
+and picture markers.
 
 ### .docx generation
 
