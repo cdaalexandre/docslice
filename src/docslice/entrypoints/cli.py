@@ -124,6 +124,7 @@ def main() -> None:
 
     logger.info("Full text: %s", result.txt_path)
     logger.info("Full docx: %s", result.docx_path)
+    logger.info("Full md: %s", result.md_path)
     if result.txt_parts:
         logger.info("Text parts: %d files in %s/", len(result.txt_parts), output_dir)
     if result.docx_parts:

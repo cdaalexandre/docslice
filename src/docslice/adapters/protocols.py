@@ -53,6 +53,18 @@ class DocxWriter(Protocol):
         ...
 
 
+class MarkdownWriter(Protocol):
+    """Interface for writing Markdown text to a .md file.
+
+    Implementations preserve the Markdown structure as given and write
+    a UTF-8 file with LF line endings.
+    """
+
+    def __call__(self, text: str, md_path: Path) -> Path:
+        """Write text to md_path as Markdown. Returns the path."""
+        ...
+
+
 class PageRasterizer(Protocol):
     """Interface for rendering PDF pages to image files (fitz, fake)."""
 

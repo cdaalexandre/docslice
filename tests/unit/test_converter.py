@@ -50,6 +50,19 @@ class FakeDocxWriter:
         return docx_path
 
 
+class FakeMarkdownWriter:
+    """Test double that records calls and writes canned md bytes."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path]] = []
+
+    def __call__(self, text: str, md_path: Path) -> Path:
+        self.calls.append((text, md_path))
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_bytes(b"FAKE_MD_BYTES")
+        return md_path
+
+
 class FakePageRasterizer:
     """Test double that records calls and returns canned image paths."""
 
@@ -237,3 +250,24 @@ class TestConvert:
 
         assert result.page_images == []
         assert rasterizer.calls == []
+
+    def test_produces_full_markdown(self, tmp_path: Path) -> None:
+        # Wiring proof: the convert() pipeline must emit <stem>.md from
+        # the raw (structure-preserving) text, alongside txt and docx.
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        md_writer = FakeMarkdownWriter()
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(),
+            docx_writer=FakeDocxWriter(),
+            md_writer=md_writer,
+        )
+
+        assert result.md_path.exists()
+        assert result.md_path.suffix == ".md"
+        assert result.md_path.name == "test.md"
+        assert len(md_writer.calls) == 1

@@ -15,9 +15,11 @@ from typing import TYPE_CHECKING
 
 from docslice.adapters.docx_writer import write_txt_as_docx
 from docslice.adapters.file_io import split_binary_file, split_text_file, write_text
+from docslice.adapters.md_writer import write_markdown
 from docslice.domain.splitter import compute_split_points
 from docslice.domain.text_cleanup import (
     flatten_pseudo_tables,
+    normalize_markdown,
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
@@ -29,7 +31,12 @@ from docslice.service_layer.rasterizer import rasterize_document
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from docslice.adapters.protocols import DocxWriter, PageRasterizer, TextExtractor
+    from docslice.adapters.protocols import (
+        DocxWriter,
+        MarkdownWriter,
+        PageRasterizer,
+        TextExtractor,
+    )
 
 logger = get_logger(__name__)
 
@@ -50,6 +57,7 @@ class ConvertResult:
     input_path: Path
     txt_path: Path
     docx_path: Path
+    md_path: Path
     txt_parts: list[Path] = field(default_factory=list)
     docx_parts: list[Path] = field(default_factory=list)
     original_parts: list[Path] = field(default_factory=list)
@@ -79,6 +87,7 @@ def convert(
     image_dpi: int = _DEFAULT_IMAGE_DPI,
     extractor: TextExtractor | None = None,
     docx_writer: DocxWriter | None = None,
+    md_writer: MarkdownWriter | None = None,
     rasterizer: PageRasterizer | None = None,
 ) -> ConvertResult:
     """Full pipeline: detect format -> extract -> clean -> split -> write.
@@ -104,6 +113,7 @@ def convert(
         image_dpi: Render resolution for the page images, in DPI.
         extractor: Optional injected extractor (for testing with Fakes).
         docx_writer: Optional injected docx writer (for testing with Fakes).
+        md_writer: Optional injected markdown writer (for testing with Fakes).
         rasterizer: Optional injected rasterizer (for testing with Fakes).
 
     Returns:
@@ -113,6 +123,7 @@ def convert(
 
     extract = extractor or _resolve_extractor(input_path.suffix)
     write_docx = docx_writer or write_txt_as_docx
+    write_md = md_writer or write_markdown
 
     logger.info("Extracting text...")
     raw_text = extract(input_path)
@@ -131,6 +142,12 @@ def convert(
 
     docx_path = output_dir / f"{stem}.docx"
     write_docx(txt_path, docx_path)
+
+    md_text = normalize_markdown(raw_text)
+    md_text = strip_control_chars(md_text)
+    md_text = remove_picture_markers(md_text)
+    md_path = output_dir / f"{stem}.md"
+    write_md(md_text, md_path)
 
     split_points = compute_split_points(clean_text, max_txt_bytes)
     txt_parts: list[Path] = []
@@ -174,6 +191,7 @@ def convert(
         input_path=input_path,
         txt_path=txt_path,
         docx_path=docx_path,
+        md_path=md_path,
         txt_parts=txt_parts,
         docx_parts=docx_parts,
         original_parts=original_parts,

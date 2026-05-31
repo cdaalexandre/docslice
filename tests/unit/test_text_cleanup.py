@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from docslice.domain.text_cleanup import (
     flatten_pseudo_tables,
+    normalize_markdown,
     normalize_text,
     remove_page_markers,
     remove_picture_markers,
@@ -270,3 +271,52 @@ class TestStripControlChars:
         assert "Chapter 1: Introduction" in result
         assert "This is a paragraph with embedded control bytes." in result
         assert "It must remain readable after cleanup." in result
+
+
+class TestNormalizeMarkdown:
+    """Tests for normalize_markdown (structure-preserving normalizer)."""
+
+    def test_normalizes_crlf(self) -> None:
+        raw = "# Title\r\n\r\nBody line.\r\n"
+        result = normalize_markdown(raw)
+        assert "\r" not in result
+        assert "# Title" in result
+
+    def test_form_feed_becomes_newline(self) -> None:
+        raw = "Before\fAfter"
+        result = normalize_markdown(raw)
+        assert "\f" not in result
+        assert "Before" in result
+        assert "After" in result
+
+    def test_preserves_heading_markers(self) -> None:
+        raw = "# H1\n\n## H2\n\n### H3\n"
+        result = normalize_markdown(raw)
+        assert "# H1" in result
+        assert "## H2" in result
+        assert "### H3" in result
+
+    def test_preserves_list_indentation(self) -> None:
+        # normalize_text would collapse leading spaces; this must not.
+        raw = "- top\n  - nested\n    - deeper\n"
+        result = normalize_markdown(raw)
+        assert "  - nested" in result
+        assert "    - deeper" in result
+
+    def test_preserves_table_pipes(self) -> None:
+        raw = "|col a|col b|\n|---|---|\n|1|2|\n"
+        result = normalize_markdown(raw)
+        assert "|col a|col b|" in result
+        assert "|---|---|" in result
+
+    def test_does_not_collapse_internal_spaces(self) -> None:
+        # Code spans / aligned content keep their spacing.
+        raw = "word    word\n"
+        result = normalize_markdown(raw)
+        assert "word    word" in result
+
+    def test_strips_trailing_whitespace(self) -> None:
+        raw = "Heading   \nBody   \n"
+        result = normalize_markdown(raw)
+        for line in result.split("\n"):
+            assert line == line.rstrip()

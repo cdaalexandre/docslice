@@ -170,3 +170,32 @@ def flatten_pseudo_tables(text: str) -> str:
     # Collapse any 3+ consecutive newlines that may result from the
     # multi-line replacement meeting an existing blank line.
     return re.sub(r"\n{3,}", "\n\n", out)
+
+
+def normalize_markdown(raw: str) -> str:
+    r"""Normalize raw Markdown for the full .md output, preserving structure.
+
+    Unlike `normalize_text` (which targets clean prose for TXT/DOCX and
+    collapses whitespace), this keeps Markdown structure intact:
+    headings, list indentation, table pipes, and intentional spacing
+    all survive. Only the bare minimum is touched:
+
+        1. Normalize line endings to LF (\r\n and \r become \n).
+        2. Convert form-feed to a newline (preserves page-break breaks).
+        3. Strip trailing whitespace per line (cosmetic, never structural).
+
+    Control-char stripping and picture-marker removal are applied
+    separately by the service layer so this function stays a pure,
+    single-purpose line-ending normalizer.
+
+    Args:
+        raw: Raw Markdown text from a PDF or EPUB extractor.
+
+    Returns:
+        Markdown with LF line endings and no trailing whitespace,
+        structure otherwise untouched.
+    """
+    text = raw.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\f", "\n")
+    lines = [line.rstrip() for line in text.split("\n")]
+    return "\n".join(lines)
