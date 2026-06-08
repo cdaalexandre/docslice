@@ -58,6 +58,11 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Render PDF pages to PNGs and skip TXT/DOCX conversion.",
     )
+    image_group.add_argument(
+        "--md-only",
+        action="store_true",
+        help="Emit only the .md file; skip TXT, DOCX, and chunk parts.",
+    )
     parser.add_argument(
         "--image-dpi",
         type=int,
@@ -117,14 +122,16 @@ def main() -> None:
             max_orig_bytes,
             rasterize=args.images,
             image_dpi=args.image_dpi,
+            md_only=args.md_only,
         )
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         logger.error("Conversion failed: %s", exc)
         sys.exit(1)
 
-    logger.info("Full text: %s", result.txt_path)
-    logger.info("Full docx: %s", result.docx_path)
     logger.info("Full md: %s", result.md_path)
+    if not args.md_only:
+        logger.info("Full text: %s", result.txt_path)
+        logger.info("Full docx: %s", result.docx_path)
     if result.txt_parts:
         logger.info("Text parts: %d files in %s/", len(result.txt_parts), output_dir)
     if result.docx_parts:

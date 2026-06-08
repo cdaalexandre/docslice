@@ -84,6 +84,7 @@ def convert(
     max_orig_bytes: int = _DEFAULT_MAX_ORIG_BYTES,
     *,
     rasterize: bool = False,
+    md_only: bool = False,
     image_dpi: int = _DEFAULT_IMAGE_DPI,
     extractor: TextExtractor | None = None,
     docx_writer: DocxWriter | None = None,
@@ -110,6 +111,9 @@ def convert(
             (~3 MB default).
         rasterize: If True, also render each PDF page to a PNG.
             Ignored (with a warning) for non-PDF input.
+        md_only: If True, emit only the consolidated .md file and
+            skip TXT, DOCX, and all chunk parts. Extraction and
+            cleanup still run because the Markdown needs them.
         image_dpi: Render resolution for the page images, in DPI.
         extractor: Optional injected extractor (for testing with Fakes).
         docx_writer: Optional injected docx writer (for testing with Fakes).
@@ -137,33 +141,36 @@ def convert(
 
     stem = input_path.stem
 
+    # These paths are always reported, even in md_only mode where
+    # the files are not created (callers check .exists()).
     txt_path = output_dir / f"{stem}.txt"
-    write_text(clean_text, txt_path)
-
     docx_path = output_dir / f"{stem}.docx"
-    write_docx(txt_path, docx_path)
+    md_path = output_dir / f"{stem}.md"
 
     md_text = normalize_markdown(raw_text)
     md_text = strip_control_chars(md_text)
     md_text = remove_picture_markers(md_text)
-    md_path = output_dir / f"{stem}.md"
     write_md(md_text, md_path)
 
-    split_points = compute_split_points(clean_text, max_txt_bytes)
     txt_parts: list[Path] = []
     docx_parts: list[Path] = []
-    if split_points:
-        txt_parts_dir = output_dir / "txt_parts"
-        txt_parts = split_text_file(txt_path, split_points, txt_parts_dir)
+    if not md_only:
+        write_text(clean_text, txt_path)
+        write_docx(txt_path, docx_path)
 
-        docx_parts_dir = output_dir / "docx_parts"
-        for txt_part in txt_parts:
-            docx_part = docx_parts_dir / f"{txt_part.stem}.docx"
-            write_docx(txt_part, docx_part)
-            docx_parts.append(docx_part)
+        split_points = compute_split_points(clean_text, max_txt_bytes)
+        if split_points:
+            txt_parts_dir = output_dir / "txt_parts"
+            txt_parts = split_text_file(txt_path, split_points, txt_parts_dir)
+
+            docx_parts_dir = output_dir / "docx_parts"
+            for txt_part in txt_parts:
+                docx_part = docx_parts_dir / f"{txt_part.stem}.docx"
+                write_docx(txt_part, docx_part)
+                docx_parts.append(docx_part)
 
     original_parts: list[Path] = []
-    if input_path.stat().st_size > max_orig_bytes:
+    if not md_only and input_path.stat().st_size > max_orig_bytes:
         orig_parts_dir = output_dir / "original_parts"
         original_parts = split_binary_file(input_path, max_orig_bytes, orig_parts_dir)
 

@@ -271,3 +271,51 @@ class TestConvert:
         assert result.md_path.suffix == ".md"
         assert result.md_path.name == "test.md"
         assert len(md_writer.calls) == 1
+
+    def test_md_only_skips_txt_and_docx(self, tmp_path: Path) -> None:
+        # Wiring proof: with md_only=True the pipeline writes only the
+        # consolidated .md. The .txt and .docx paths are still reported
+        # on the result, but the files must not exist on disk.
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        md_writer = FakeMarkdownWriter()
+        docx_writer = FakeDocxWriter()
+
+        result = convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(),
+            docx_writer=docx_writer,
+            md_writer=md_writer,
+            md_only=True,
+        )
+
+        assert result.md_path.exists()
+        assert not result.txt_path.exists()
+        assert not result.docx_path.exists()
+        assert result.txt_parts == []
+        assert result.docx_parts == []
+        assert len(md_writer.calls) == 1
+
+    def test_md_only_never_calls_docx_writer(self, tmp_path: Path) -> None:
+        # The docx writer is the most expensive dependency; md_only must
+        # not invoke it at all, not even for the consolidated file.
+        input_file = tmp_path / "big.pdf"
+        input_file.write_bytes(b"x" * 100)
+        output_dir = tmp_path / "output"
+        large_text = ("Content here. " * 50 + "\n\n") * 20
+        docx_writer = FakeDocxWriter()
+
+        convert(
+            input_file,
+            output_dir,
+            max_txt_bytes=500,
+            max_orig_bytes=500,
+            extractor=FakeExtractor(text=large_text),
+            docx_writer=docx_writer,
+            md_writer=FakeMarkdownWriter(),
+            md_only=True,
+        )
+
+        assert docx_writer.calls == []
