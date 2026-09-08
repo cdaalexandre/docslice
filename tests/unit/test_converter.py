@@ -319,3 +319,52 @@ class TestConvert:
         )
 
         assert docx_writer.calls == []
+
+    def test_md_flattens_pseudo_tables(self, tmp_path: Path) -> None:
+        # Wiring proof: the .md is the LLM-facing output, so the
+        # pymupdf-layout pseudo-tables (a pipe row with <br> and no
+        # '|---' separator on the next line) must be flattened there
+        # too, not only in the .txt. Dropping flatten_pseudo_tables
+        # from the md branch of convert() fails this test.
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        raw = "|item one<br>item two<br>item three|\n\nFollow-up paragraph."
+        md_writer = FakeMarkdownWriter()
+
+        convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(text=raw),
+            docx_writer=FakeDocxWriter(),
+            md_writer=md_writer,
+        )
+
+        md_text = md_writer.calls[0][0]
+        assert "<br>" not in md_text
+        assert "item one" in md_text
+        assert "item three" in md_text
+        assert not md_text.split("\n")[0].startswith("|")
+
+    def test_md_preserves_real_tables(self, tmp_path: Path) -> None:
+        # The flatten pass must not touch real markdown tables: a pipe
+        # row followed by a '|---' separator is genuine structure, and
+        # keeping it is the whole reason the .md exists alongside the
+        # flattened .txt.
+        input_file = tmp_path / "test.pdf"
+        input_file.write_bytes(b"fake pdf content")
+        output_dir = tmp_path / "output"
+        raw = "|col a<br>note|col b|\n|---|---|\n|1|2|"
+        md_writer = FakeMarkdownWriter()
+
+        convert(
+            input_file,
+            output_dir,
+            extractor=FakeExtractor(text=raw),
+            docx_writer=FakeDocxWriter(),
+            md_writer=md_writer,
+        )
+
+        md_text = md_writer.calls[0][0]
+        assert "|---|---|" in md_text
+        assert "|col a<br>note|col b|" in md_text

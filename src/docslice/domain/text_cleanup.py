@@ -184,9 +184,9 @@ def normalize_markdown(raw: str) -> str:
         2. Convert form-feed to a newline (preserves page-break breaks).
         3. Strip trailing whitespace per line (cosmetic, never structural).
 
-    Control-char stripping and picture-marker removal are applied
-    separately by the service layer so this function stays a pure,
-    single-purpose line-ending normalizer.
+    Control-char stripping, picture-marker removal, and pseudo-table
+    flattening are applied separately by the service layer so this
+    function stays a pure, single-purpose line-ending normalizer.
 
     Args:
         raw: Raw Markdown text from a PDF or EPUB extractor.

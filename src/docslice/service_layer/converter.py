@@ -147,9 +147,14 @@ def convert(
     docx_path = output_dir / f"{stem}.docx"
     md_path = output_dir / f"{stem}.md"
 
+    # The .md is the LLM-facing output, so it gets the same
+    # pseudo-table flattening as the .txt: pymupdf-layout wraps prose
+    # in fake pipe rows, and flatten_pseudo_tables leaves real tables
+    # (those with a '|---' separator on the next line) untouched.
     md_text = normalize_markdown(raw_text)
     md_text = strip_control_chars(md_text)
     md_text = remove_picture_markers(md_text)
+    md_text = flatten_pseudo_tables(md_text)
     write_md(md_text, md_path)
 
     txt_parts: list[Path] = []
