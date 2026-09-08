@@ -75,20 +75,81 @@ def strip_control_chars(text: str) -> str:
     return _XML_ILLEGAL_RE.sub("", text)
 
 
-def remove_page_markers(text: str) -> str:
-    """Remove common page number patterns from extracted text.
+# A bare number or a 'Page N' label on its own line looks like a page
+# marker, but looking like one is not enough: prose broken by PDF
+# layout strands real content on its own line too - a year inside a
+# citation, an article number in a legal text, a value from a table
+# that lost its rows. Matching the pattern is a necessary condition,
+# never a sufficient one. See _is_isolated below.
+_PAGE_NUMBER_RE = re.compile(r"^\s*-?\s*\d{1,5}\s*-?\s*$")
+_PAGE_LABEL_RE = re.compile(r"^\s*[Pp]age\s+\d+\s*$")
 
-    Matches patterns like '  42  ', '- 42 -', 'Page 42', standalone numbers.
+
+def _looks_like_page_marker(line: str) -> bool:
+    """Report whether a single line matches a page-marker pattern.
 
     Args:
-        text: Text potentially containing page markers.
+        line: One line of text, without its trailing newline.
 
     Returns:
-        Text with page markers removed.
+        True if the line is a bare page number ('42', '- 42 -') or a
+        'Page N' label. Says nothing about whether it *is* a marker -
+        that needs the isolation check too.
     """
-    text = re.sub(r"^\s*-?\s*\d{1,5}\s*-?\s*$", "", text, flags=re.MULTILINE)
-    text = re.sub(r"^\s*[Pp]age\s+\d+\s*$", "", text, flags=re.MULTILINE)
-    return text
+    return bool(_PAGE_NUMBER_RE.match(line) or _PAGE_LABEL_RE.match(line))
+
+
+def _is_isolated(lines: list[str], index: int) -> bool:
+    """Report whether the line at index sits alone between blank lines.
+
+    A running header or footer is surrounded by blank lines once the
+    page break is normalized. Content stranded on its own line by a
+    layout break keeps prose touching it on at least one side, so the
+    two cases separate cleanly.
+
+    Args:
+        lines: All lines of the text.
+        index: Position of the candidate line.
+
+    Returns:
+        True if both neighbours are blank or absent (start/end of text).
+    """
+    before_blank = index == 0 or not lines[index - 1].strip()
+    after_blank = index == len(lines) - 1 or not lines[index + 1].strip()
+    return before_blank and after_blank
+
+
+def remove_page_markers(text: str) -> str:
+    """Remove page numbers and 'Page N' labels that sit on their own line.
+
+    Only *isolated* markers are removed - a matching line surrounded by
+    blank lines (or at the start/end of the text). A matching line with
+    prose touching it is left alone, because at that position it is far
+    more likely to be content stranded by a layout break: a year in a
+    broken citation, an article number in a legal document, a value
+    from a table that lost its structure.
+
+    The trade-off is deliberate. A footer that stayed glued to the text
+    survives as low-signal noise; deleted content is unrecoverable.
+
+    Args:
+        text: Text potentially containing page markers. Expected to
+            have been through normalize_text already, so runs of blank
+            lines are collapsed to one and the isolation signal holds.
+
+    Returns:
+        Text with isolated page markers replaced by empty lines.
+    """
+    lines = text.split("\n")
+    result: list[str] = []
+
+    for index, line in enumerate(lines):
+        if _looks_like_page_marker(line) and _is_isolated(lines, index):
+            result.append("")
+        else:
+            result.append(line)
+
+    return "\n".join(result)
 
 
 def remove_picture_markers(text: str) -> str:

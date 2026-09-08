@@ -83,31 +83,108 @@ class TestNormalizeText:
 
 
 class TestRemovePageMarkers:
-    """Tests for remove_page_markers."""
+    """Tests for remove_page_markers.
 
-    def test_removes_standalone_number(self) -> None:
-        text = "Some text\n  42  \nMore text"
+    The three 'removes' tests used to place the marker between two
+    prose lines. That encoded the old bug: any bare number on its own
+    line was deleted regardless of context. They now use the isolated
+    form a real footer takes after normalize_text.
+    """
+
+    def test_removes_isolated_number(self) -> None:
+        text = "End of one page.\n\n42\n\nStart of the next."
         result = remove_page_markers(text)
         assert "42" not in result
-        assert "Some text" in result
+        assert "End of one page." in result
+        assert "Start of the next." in result
 
-    def test_removes_dashed_number(self) -> None:
-        text = "Text\n- 42 -\nMore"
+    def test_removes_isolated_dashed_number(self) -> None:
+        text = "End of one page.\n\n- 42 -\n\nStart of the next."
         result = remove_page_markers(text)
         assert "42" not in result
 
-    def test_removes_page_prefix(self) -> None:
-        text = "Text\nPage 42\nMore"
+    def test_removes_isolated_page_prefix(self) -> None:
+        text = "End of one page.\n\nPage 42\n\nStart of the next."
         result = remove_page_markers(text)
         assert "Page 42" not in result
+
+    def test_removes_marker_at_start_of_text(self) -> None:
+        # Nothing above counts as blank on that side.
+        text = "42\n\nBody text."
+        result = remove_page_markers(text)
+        assert result.strip() == "Body text."
+
+    def test_removes_marker_at_end_of_text(self) -> None:
+        # Nothing below counts as blank on that side.
+        text = "Body text.\n\n42"
+        result = remove_page_markers(text)
+        assert result.strip() == "Body text."
+
+    def test_removes_several_markers_in_one_pass(self) -> None:
+        text = "Page one body.\n\n1\n\nPage two body.\n\n2\n\nPage three body."
+        result = remove_page_markers(text)
+        for body in ("Page one body.", "Page two body.", "Page three body."):
+            assert body in result
+        assert "\n1\n" not in result
+        assert "\n2\n" not in result
 
     def test_preserves_numbers_in_sentences(self) -> None:
         text = "There are 42 items in this list."
         result = remove_page_markers(text)
-        assert "42" in result
+        assert result == text
 
     def test_preserves_normal_content(self) -> None:
         text = "Normal text without page numbers."
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_line_count_is_stable(self) -> None:
+        # Markers become empty lines, never disappear - downstream
+        # byte-offset splitting must not see lines vanish here.
+        text = "Body.\n\n42\n\nMore body."
+        result = remove_page_markers(text)
+        assert len(result.split("\n")) == len(text.split("\n"))
+
+
+class TestRemovePageMarkersIsolationGuard:
+    """Regression tests - the isolation guard exists for these cases.
+
+    Every text here matched the old regex and was silently deleted.
+    Each one is real content, not a footer.
+    """
+
+    def test_preserves_year_in_broken_citation(self) -> None:
+        # A layout break drops the year onto its own line.
+        text = "Ramalho\n2022\nFluent Python"
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_preserves_article_number_after_line_break(self) -> None:
+        # Brazilian legal PDFs strand article numbers between prose
+        # lines. Deleting them corrupts the document silently.
+        text = "Art. 155\n312\nSubtrair coisa alheia"
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_preserves_value_from_broken_table(self) -> None:
+        text = "Total\n1500\nreais"
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_preserves_marker_blank_above_only(self) -> None:
+        # One blank side is not enough; a footer is blank on both.
+        text = "Paragraph ends.\n\n42\nGlued next line."
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_preserves_marker_blank_below_only(self) -> None:
+        text = "Glued previous line.\n42\n\nParagraph starts."
+        result = remove_page_markers(text)
+        assert result == text
+
+    def test_preserves_numbered_list_items(self) -> None:
+        # Enumerations survive because prose touches them.
+        text = "1\nFirst item\n2\nSecond item"
         result = remove_page_markers(text)
         assert result == text
 
